@@ -2,7 +2,7 @@ import "dotenv/config";
 import express from "express";
 import http from "http";
 import { BlobServiceClient } from"@azure/storage-blob";
-import fetch from"node-fetch";
+import amqp from 'amqplib';
 import multer from "multer";
 
 
@@ -23,6 +23,7 @@ async function main() {
         console.info(`Started server on port ${port}`);
     });
 
+
     const upload = multer();
 
     server.post('/upload', upload.single('file'), async (req, res) => {
@@ -31,6 +32,36 @@ async function main() {
             console.log("Uploading picture...");
             await uploadPictureToAzureStorage(accountName, accountKey, containerName, req.body.filename, fileData);
             console.log("Picture uploaded successfully.");
+            amqp.connect('amqp://localhost', function(error0, connection) {
+                console.log(connection);
+                if (error0) {
+                    console.log("Error connecting to RabbitMQ");
+                    throw error0;
+                }
+                connection.createChannel(function(error1, channel) {
+                    console.log(channel);
+                    if (error1) {
+                        console.log("Error creating channel");
+                        throw error1;
+                    }
+            
+                    var queue = 'file_queue';
+                    var msg = "[{'filename':" + req.body.filename + " username:" + req.body.username + "}]";
+            
+                    channel.assertQueue(queue, {
+                        durable: false
+                    });
+                    channel.sendToQueue(queue, Buffer.from(msg));
+                    res.json("Picture sent successfully.");
+
+                    console.log(" [x] Sent %s", msg);
+                });
+                setTimeout(function() {
+                    console.log("Closing connection...");
+                    connection.close();
+                    process.exit(0);
+                }, 500);
+            });
             res.json("Picture uploaded successfully.");
         } catch (error) {
             res.status(500).json({ error: 'Internal Server Error' });
@@ -38,6 +69,33 @@ async function main() {
         }
     });
 
+    server.get('/rabbitget', async (req, res) => {
+        amqp.connect('amqp://localhost', function(error0, connection) {
+            if (error0) {
+                throw error0;
+            }
+            connection.createChannel(function(error1, channel) {
+                if (error1) {
+                    throw error1;
+                }
+
+                var queue = 'file_queue';
+
+                channel.assertQueue(queue, {
+                    durable: false
+                });
+
+                console.log(" [*] Waiting for messages in %s. To exit press CTRL+C", queue);
+
+                channel.consume(queue, function(msg) {
+                    console.log(" [x] Received %s", msg.content.toString());
+                }, {
+                    noAck: true
+                });
+            });
+        });
+    });
+        
     server.get('/download', async (req, res) => {
         try {
             console.log("Downloading picture...");
