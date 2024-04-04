@@ -106,9 +106,6 @@ async function main() {
     server.use(express.json());
     server.use(express.urlencoded({ extended: false }));
 
-    // Example image URL
-    const exampleImagePath = 'test_images/beach_volleyball.JPEG';
-
     // List of paths of images to compare
     // Route to handle image comparison
     server.post('/upload', async (req, res) => {
