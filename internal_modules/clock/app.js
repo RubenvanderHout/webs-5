@@ -8,12 +8,12 @@ const uri = 'mongodb://admin:password@localhost:27017';
 const client = new MongoClient(uri);
 
 class TimingCompetition {
-    /** 
-     * @constructor
-     * @param { string } competition
-     * @param { number } startTime
-     * @param { numer } endTime
-    */
+        /** 
+         * @constructor
+         * @param { string } competition
+         * @param { number } startTime
+         * @param { numer } endTime
+        */
        constructor(startTime, endTime){
         this.startTime = startTime;
         this.endTime = endTime;
