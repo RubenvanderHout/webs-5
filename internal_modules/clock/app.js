@@ -1,54 +1,46 @@
-import "dotenv/config";
-import http from "http";
-import { MongoClient  } from "mongodb"
+import { MongoClient, Collection  } from "mongodb"
+import express from "express";
 
 const port = '8000'
 const host = '0.0.0.0'
-
 const uri = 'mongodb://admin:password@localhost:27017/clock';
+
+const client = new MongoClient(uri);
 
 async function main() {
     const server = express();
     server.use(express.json());
     server.use(express.urlencoded({ extended: false }));
-    const app = http.createServer(server);
+
+    /** @type {Collection} */
+    const collection = await connectMongoDB();
 
 
+    server.post('/', (req, res) => {
+        const { name, age } = req.body;
 
+        collection.insertOne({name: name, age: age})
 
+        res.send('Hello World!')
+    });
 
-
-    app.listen(port, host, () => {
-        logger.info(`Started server on port ${port}`);
+    server.listen(port, host, () => {
+        console.info(`Started server on port ${port}`);
     })
 }
 
 async function connectMongoDB() {
     try {
-        // Connect to the MongoDB server
-        await client.connect();
+        await client.connect(); // Corrected line
         console.log('Connected to MongoDB');
 
         const db = client.db('clock');
         const collection = db.collection('timings');
 
-        await collection.insertOne({ name: 'John', age: 30 });
-        console.log('Document inserted');
-        
+        return collection
     } catch (err) {
         console.error('Error connecting to MongoDB:', err);
     }
 }
 
-
-
-
 main();
-
-
-
-
-
-    
-
-  
