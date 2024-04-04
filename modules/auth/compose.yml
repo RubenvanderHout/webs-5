@@ -1,0 +1,20 @@
+version: '3'
+
+services:
+  db-auth:
+    image: mysql:8.3.0
+    restart: always
+    container_name: db-dev
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: auth
+      MYSQL_USER: user
+      MYSQL_PASSWORD: magicman
+    volumes:
+      - db-email-data:/var/lib/mysql
+    ports:
+      - 5050:3306
+      
+volumes:
+  db-auth-data:
