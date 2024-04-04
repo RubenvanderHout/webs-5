@@ -3,9 +3,22 @@ import express from "express";
 
 const port = '8000'
 const host = '0.0.0.0'
-const uri = 'mongodb://admin:password@localhost:27017/clock';
+const uri = 'mongodb://admin:password@localhost:27017';
 
 const client = new MongoClient(uri);
+
+class TimingCompetition {
+        /** 
+         * @constructor
+         * @param { string } competition
+         * @param { number } startTime
+         * @param { numer } endTime
+        */
+       constructor(startTime, endTime){
+        this.startTime = startTime;
+        this.endTime = endTime;
+    }
+}
 
 async function main() {
     const server = express();
@@ -16,7 +29,7 @@ async function main() {
     const collection = await connectMongoDB();
 
 
-    server.post('/', (req, res) => {
+    server.post('/api/timing', (req, res) => {
         const { name, age } = req.body;
 
         collection.insertOne({name: name, age: age})
