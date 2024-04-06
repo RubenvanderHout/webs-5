@@ -41,12 +41,15 @@ async function main() {
             await mongoClient.connect();
             const db = mongoClient.db('targets');
             const collection = db.collection('competition_files');
+            const highestId = await getHighestCompetitionId(collection);
+            const competitionId = req.body.end ? String(parseInt(highestId) + 1) : req.body.competition_id;
+
             const fileInformation = {
                 filename: req.body.filename,
                 username: req.body.username,
                 start: req.body.start,
                 end: req.body.end,
-                competition_id: req.body.competition_id
+                competition_id: competitionId
             };
             await collection.insertOne(fileInformation);
             console.log("File information saved to MongoDB.");
@@ -65,6 +68,50 @@ async function main() {
                 console.error('Error sending message to queue:', error);
             }
             res.json("Picture uploaded successfully.");
+        } catch (error) {
+            res.status(500).json({ error: 'Internal Server Error' });
+            console.error('Error:', error);
+        }
+    });
+
+    server.get('/target/:competitionId', async (req, res) => {
+        const competitionId = req.params.competitionId;
+        
+        try {
+            const mongoClient = new MongoClient("mongodb://root:magicman@localhost:27018/",{auth: {
+                username: 'root',
+                password: 'magicman'
+            }});
+            await mongoClient.connect();
+            const db = mongoClient.db('targets');
+            const collection = db.collection('competition_files');
+                        const query = {
+                competition_id: competitionId,
+                end: { $ne: null }
+            };
+            const files = await collection.find(query).toArray();
+            
+            res.json(files);
+        } catch (error) {
+            res.status(500).json({ error: 'Internal Server Error' });
+            console.error('Error:', error);
+        }
+    });
+
+    server.get('/target', async (req, res) => {
+        try {
+            const mongoClient = new MongoClient("mongodb://root:magicman@localhost:27018/",{auth: {
+                username: 'root',
+                password: 'magicman'
+            }});
+            await mongoClient.connect();
+            const db = mongoClient.db('targets');
+            const collection = db.collection('competition_files');
+            
+            const query = { end: { $ne: null } };
+            const files = await collection.find(query).toArray();
+            
+            res.json(files);
         } catch (error) {
             res.status(500).json({ error: 'Internal Server Error' });
             console.error('Error:', error);
@@ -89,6 +136,13 @@ async function main() {
 
 }
 
+async function getHighestCompetitionId(collection) {
+    const result = await collection.find({}, { projection: { competition_id: 1 } })
+                                   .sort({ competition_id: -1 })
+                                   .limit(1)
+                                   .toArray();
+    return result.length > 0 ? result[0].competition_id : 0;
+}
 
 async function uploadPictureToAzureStorage(accountName, accountKey, containerName, blobName, fileData) {
     const blobServiceClient = BlobServiceClient.fromConnectionString(`DefaultEndpointsProtocol=https;AccountName=${accountName};AccountKey=${accountKey};EndpointSuffix=core.windows.net`);
