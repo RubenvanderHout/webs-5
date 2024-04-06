@@ -2,6 +2,7 @@ import express from "express"
 import jwt from "jsonwebtoken"
 import bcrypt from "bcrypt"
 import mysql from "mysql2/promise"
+import amqp from "amqplib"
 
 const app = express();
 
@@ -15,14 +16,14 @@ let channel;
 
 const receiveQueue = "mailConfirmed"
 const sendQueue = "confirmMail"
+const RECEIVER_EMAIL = '"Loma Krajcik" <loma.krajcik@ethereal.email>';
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-
 async function main(){
 
-    await setupAMQP(connection, channel, receiveQueue);
+    await setupAMQP();
 
     app.put('/api/auth/authenticateToken', async (req, res) => {
         const token = req.body.authorization;
@@ -35,13 +36,10 @@ async function main(){
     });
     
     // Register a new user
-    app.post('/api/auth/register/:email', async (req, res) => {
+    app.post('/api/auth/register/:username', async (req, res) => {
         
-        console.log(req.params.email, req.body.password)
-    
-    
-        if(req.params.email === null || typeof req.params.email !== "string"){
-            return res.status(400).send('Email not correct');
+        if(req.params.username === null || typeof req.params.username !== "string"){
+            return res.status(400).send('Username not correct');
         }
     
         if(req.body.password === null || typeof req.body.password !== "string"){
@@ -50,20 +48,21 @@ async function main(){
         
         try {
             const pass = await bcrypt.hash(req.body.password, 10);
-            const user = { email: req.params.email, password: pass, confirmed: false };
+            const user = { username: req.params.username, email: RECEIVER_EMAIL, password: pass, confirmed: 0 };
             await saveUser(user);
-            await sendConfirmEmailAMQP(channel, sendQueue, user.email);
+            await sendConfirmUserNameAMQP({ username: user.username, email: user.email });
             res.status(201).send('User registered successfully');
-        } catch {
+        } catch(err) {
+            console.error(err)
             res.status(500).send("Internal Server Error");
         }
     });
     
     // Login and get JWT token
-    app.post('/api/auth/login/:email', async (req, res) => {
+    app.post('/api/auth/login/:username', async (req, res) => {
         
-        if(req.params.email === null || typeof req.params.email !== "string"){
-            return res.status(400).send('Email not correct');
+        if(req.params.username === null || typeof req.params.username !== "string"){
+            return res.status(400).send('Username not correct');
         }
         
         if(req.body.password === null || typeof req.body.password !== "string"){
@@ -71,18 +70,20 @@ async function main(){
         }
     
         try {
-            const user = await findUser(req.params.email);
+            const user = await findUser(req.params.username);
         
             if (user === null) {
                 return res.sendStatus(404);
             }
     
+            if(user.confirmed === 0){
+                return res.status(401).send('User not confirmed yet');
+            }
+
             if (await bcrypt.compare(req.body.password, user.password)) {
-                const rights = { email: user.email  };
-                
-                
+                const rights = { username: user.username, email: user.email, confirmed: user.confirmed };
                 const accessToken = jwt.sign(rights, JWT_SECRET_KEY);
-                res.json({ accessToken: accessToken });
+                res.json({ token: accessToken });
             } else {
                 res.status(401).send('Incorrect password');
             }
@@ -95,32 +96,6 @@ async function main(){
     app.listen(PORT, HOST, () => {
         console.info(`Started server on port ${PORT}`);
     });
-}
-
-
-
-
-async function setupAMQP(connection, channel, queue){
-    try {
-        connection = await amqp.connect('amqp://localhost')
-        channel = await connection.createChannel();
-
-        console.log("Waiting for messages...")
-
-        channel.consume(queue, async (msg) => {
-            if (msg !== null) {
-                const email = msg.content.toString()
-                console.log('Received message:', email);
-            
-                
-                
-                channel.ack(msg);
-            }
-        })
-        
-    } catch (error) {
-        console.log("Could not setup AMQP connection")
-    }
 }
 
 async function setupDB(){
@@ -137,8 +112,10 @@ async function setupDB(){
         // Create users table if it doesn't exist
         await connection.execute(`
             CREATE TABLE IF NOT EXISTS users (
+                username varchar(250) PRIMARY KEY NOT NULL,
                 email varchar(250) NOT NULL,
-                password varchar(250) NOT NULL
+                password varchar(250) NOT NULL,
+                confirmed TINYINT
             )
         `);
 
@@ -149,13 +126,36 @@ async function setupDB(){
     }
 }
 
+async function setupAMQP(){
+    try {
+        connection = await amqp.connect('amqp://localhost')
+        channel = await connection.createChannel();
 
-async function saveUser(user){
-    
+        console.log("Waiting for messages...")
+
+        channel.assertQueue(receiveQueue, {
+            durable: false
+        });
+
+        channel.consume(receiveQueue, async (msg) => {
+            if (msg !== null) {
+                const string = msg.content.toString()
+                const user = JSON.parse(string);
+                updateUserConfirmed(user.username);
+                channel.ack(msg);
+            }
+        })
+        
+    } catch (error) {
+        console.log(`Could not setup AMQP connection, ${error}`)
+    }
+}
+
+async function updateUserConfirmed(username){
     const connection = await setupDB();
 
     try {
-        await connection.execute('INSERT INTO users (email, password) VALUES (?, ?)', [user.email, user.password])
+        await connection.execute('UPDATE users SET confirmed = ? WHERE username = ?', [1, username])
     } catch(err) {
         console.log(err)
         throw err;
@@ -164,17 +164,36 @@ async function saveUser(user){
     }
 }
 
-
-async function sendConfirmEmailAMQP(channel, queue, email){
-    channel.sendToQueue(queue, Buffer.from(email));
-}
-
-async function findUser(email){
+async function saveUser(user){
     
     const connection = await setupDB();
 
     try {
-        const [rows] = await connection.execute('SELECT email, password FROM users WHERE email = ?', [email]);
+        await connection.execute('INSERT IGNORE INTO users (username, email, password, confirmed) VALUES (?, ?, ?, ?)', [user.username, user.email, user.password, user.confirmed])
+    } catch(err) {
+        console.log(err)
+        throw err;
+    } finally {
+        connection.end();
+    }
+}
+
+async function sendConfirmUserNameAMQP(data){
+    const string = JSON.stringify(data)
+
+    channel.assertQueue(sendQueue,  {
+        durable: false
+    });
+
+    channel.sendToQueue(sendQueue, Buffer.from(string));
+}
+
+async function findUser(username){
+    
+    const connection = await setupDB();
+
+    try {
+        const [rows] = await connection.execute('SELECT username, email, password, confirmed FROM users WHERE username = ?', [username]);
 
         if (rows.length > 0) {
             const user = rows[0];
@@ -189,8 +208,6 @@ async function findUser(email){
         connection.end();
     }
 }
-
-
 
 main().catch((err) => {
     consolel.log(`Server error: ${err}`)
