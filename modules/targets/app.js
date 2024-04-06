@@ -31,68 +31,45 @@ async function main() {
             console.log("Uploading picture...");
             await uploadPictureToAzureStorage(accountName, accountKey, containerName, req.body.filename, fileData);
             console.log("Picture uploaded successfully.");
-            amqp.connect('amqp://localhost', function(error0, connection) {
-                console.log(connection);
-                if (error0) {
-                    console.log("Error connecting to RabbitMQ");
-                    throw error0;
-                }
-                connection.createChannel(function(error1, channel) {
-                    console.log(channel);
-                    if (error1) {
-                        console.log("Error creating channel");
-                        throw error1;
-                    }
-            
-                    var queue = 'file_queue';
-                    var msg = "[{'filename':" + req.body.filename + " username:" + req.body.username + "}]";
-            
-                    channel.assertQueue(queue, {
-                        durable: false
-                    });
-                    channel.sendToQueue(queue, Buffer.from(msg));
-                    res.json("Picture sent successfully.");
-
-                    console.log(" [x] Sent %s", msg);
+            try {
+                const message = JSON.stringify({
+                    filename: req.body.filename,
+                    username: req.body.username
                 });
-                setTimeout(function() {
-                    console.log("Closing connection...");
-                    connection.close();
-                    process.exit(0);
-                }, 500);
-            });
+                // Connect to RabbitMQ server
+                const connection = await amqp.connect('amqp://localhost');
+                // Create a channel
+                const channel = await connection.createChannel();
+                // Assert the queue
+                const queueName = 'file_queue';
+                await channel.assertQueue(queueName, { durable: false });
+                // Send message to the queue
+                channel.sendToQueue(queueName, Buffer.from(message));
+                console.log(`Message sent to queue '${queueName}': ${message}`);
+                // Close the channel and connection
+                await channel.close();
+                await connection.close();
+            } catch (error) {
+                console.error('Error sending message to queue:', error);
+            }
             res.json("Picture uploaded successfully.");
         } catch (error) {
             res.status(500).json({ error: 'Internal Server Error' });
             console.error('Error:', error);
+
         }
     });
-
     server.get('/rabbitget', async (req, res) => {
-        amqp.connect('amqp://localhost', function(error0, connection) {
-            if (error0) {
-                throw error0;
-            }
-            connection.createChannel(function(error1, channel) {
-                if (error1) {
-                    throw error1;
-                }
-
-                var queue = 'file_queue';
-
-                channel.assertQueue(queue, {
-                    durable: false
-                });
-
-                console.log(" [*] Waiting for messages in %s. To exit press CTRL+C", queue);
-
-                channel.consume(queue, function(msg) {
-                    console.log(" [x] Received %s", msg.content.toString());
-                }, {
-                    noAck: true
-                });
+        try {
+            // Receive messages from RabbitMQ queue
+            receiveMessageFromQueue('file_queue', (message) => {
+                console.log(`Received message: ${message}`);
+                res.json({ message }); // Responding to the client with the received message
             });
-        });
+        } catch (error) {
+            res.status(500).json({ error: 'Internal Server Error' });
+            console.error('Error:', error);
+        }
     });
         
     server.get('/download', async (req, res) => {
@@ -113,7 +90,28 @@ async function main() {
 
 }
 
-
+const receiveMessageFromQueue = async (queueName, callback) => {
+    try {
+        // Connect to RabbitMQ server
+        const connection = await amqp.connect('amqp://localhost');
+        // Create a channel
+        const channel = await connection.createChannel();
+        // Assert the queue
+        await channel.assertQueue(queueName, { durable: false });
+        // Consume messages from the queue
+        channel.consume(queueName, async (msg) => {
+            if (msg !== null) {
+                // Execute callback with the received message
+                callback(msg.content.toString());
+                // Acknowledge the message
+                channel.ack(msg);
+            }
+        });
+        console.log(`Waiting for messages from queue '${queueName}'...`);
+    } catch (error) {
+        console.error('Error receiving messages from queue:', error);
+    }
+};
 async function uploadPictureToAzureStorage(accountName, accountKey, containerName, blobName, fileData) {
     // Create BlobServiceClient object
     const blobServiceClient = BlobServiceClient.fromConnectionString(`DefaultEndpointsProtocol=https;AccountName=${accountName};AccountKey=${accountKey};EndpointSuffix=core.windows.net`);
