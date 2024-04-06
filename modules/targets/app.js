@@ -34,7 +34,8 @@ async function main() {
             try {
                 const message = JSON.stringify({
                     filename: req.body.filename,
-                    username: req.body.username
+                    username: req.body.username,
+                    end: req.body.end
                 });
                 // Connect to RabbitMQ server
                 const connection = await amqp.connect('amqp://localhost');
