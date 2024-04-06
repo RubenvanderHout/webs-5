@@ -1,8 +1,7 @@
-import "dotenv/config";
-import http from "http";
-import amqplib from "amqplib"
+import amqp from "amqplib"
 import jwt from "jsonwebtoken"
-import { text } from "express";
+import express from "express";
+import nodemailer from "nodemailer"
 
 const port = '7000'
 const host = '0.0.0.0'
@@ -12,7 +11,6 @@ const JWT_SECRET = 'secret_key_123';
 const transporter = nodemailer.createTransport({
     host: "smtp.ethereal.email",
     port: 587,
-    secure: false, // Use `true` for port 465, `false` for all other ports
     auth: {
       user: "brown.zulauf@ethereal.email",
       pass: "j6y2vSnQ2kqbDxgkp4",
@@ -31,51 +29,57 @@ async function main() {
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
-    await setupAMQP(connection, channel, receiveQueue);
+    await setupAMQP();
 
     app.get('/confirm/:token', async (req, res) => {
+
         const token = req.params.token
 
-        if(token != null) {
+        if(token === null) {
             return res.status(400).send('Empty value for token');
         }
 
-        jwt.verify(token, JWT_SECRET, (err, email) => {
+        jwt.verify(token, JWT_SECRET, (err, user) => {
             if (err) {
                 console.error('JWT verification failed:', err);
                 return res.status(401).send('Unauthorized');
             }
 
             transporter.sendMail({
-                from: '"Brown Zulauf" <brown.zulauf@ethereal.email>',
-                to: email,
+                from: 'Brown Zulauf <brown.zulauf@ethereal.email>',
+                to: user.email,
                 subject: "Email confirmed", 
                 text: "Email confirmed", 
             });
 
-            sendEmailConfirmedAMQP(channel, sendQueue, email);
+            sendEmailConfirmedAMQP(user);
             res.send('Confirmation received');
         });
     })
 
     app.listen(port, host, () => {
-        logger.info(`Started server on port ${port}`);
+        console.info(`Started server on port ${port}`);
     });
 }   
 
-async function setupAMQP(connection, channel, queue){
+async function setupAMQP(){
     try {
         connection = await amqp.connect('amqp://localhost')
         channel = await connection.createChannel();
 
         console.log("Waiting for messages...")
 
-        channel.consume(queue, async (msg) => {
+        channel.assertQueue(receiveQueue,  {
+            durable: false
+        });
+
+        channel.consume(receiveQueue, async (msg) => {
             if (msg !== null) {
-                const email = msg.content.toString()
-                console.log('Received message:', email);
+                const string = msg.content.toString()
+                const user = JSON.parse(string);
+                console.log('Received message:', user);
             
-                await sendConfimation(email);
+                await sendConfimation(user);
                 
                 channel.ack(msg);
             }
@@ -86,13 +90,16 @@ async function setupAMQP(connection, channel, queue){
     }
 }
 
-async function sendConfimation(email) {
+async function sendConfimation(user) {
     
     try {
-        const token = jwt.sign({ email }, JWT_SECRET);
+        const token = jwt.sign({ username: user.username, email: user.email }, JWT_SECRET);
+        
+        console.log(user.email)
+        
         const info = await transporter.sendMail({
             from: '"Brown Zulauf" <brown.zulauf@ethereal.email>',
-            to: email,
+            to: user.email,
             subject: "Confirm email", 
             html: setupHtmlContent(token), 
         });
@@ -103,9 +110,36 @@ async function sendConfimation(email) {
     }
 }
 
-async function sendEmailConfirmedAMQP(channel, queue, email){
-    channel.sendToQueue(queue, Buffer.from(email));
+async function sendEmailConfirmedAMQP(user){
+    const string = JSON.stringify(user);
+
+    try {
+        channel.assertQueue(sendQueue,  {
+            durable: false
+        });
+        channel.sendToQueue(sendQueue, Buffer.from(string));
+        console.log("Send confirmed to Auth")
+    } catch (error) {
+        console.log(error)
+    }
 }
+
+function setupHtmlContent(token){
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Email Confirmation</title>
+        </head>
+        <body>
+            <h2>Confirm Your Email</h2>
+            <p>Hello, please confirm your email by clicking the button below:</p>
+            <button><a href="http://localhost:7000/confirm/${token}">Confirm Email</a></button>
+        </body>
+        </html>
+    `;
+}
+
 
 
 main().catch((err) => {

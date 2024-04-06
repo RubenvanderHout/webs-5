@@ -16,6 +16,5 @@ services:
     ports:
       - 5050:3306
   
-  
 volumes:
   db-auth-data:
