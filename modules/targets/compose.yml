@@ -2,19 +2,17 @@ version: '3'
 
 services:
   db-targets:
-    image: mysql:8.3.0
+    image: mongo:latest
     restart: always
     container_name: db-targets
-    command: --default-authentication-plugin=mysql_native_password
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: targets
-      MYSQL_USER: user
-      MYSQL_PASSWORD: magicman
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: magicman
+      MONGO_INITDB_DATABASE: targets
     volumes:
-      - db-targets-data:/var/lib/mysql
+      - db-targets-data:/data/db
     ports:
-      - 2050:3306
+      - 27018:27017
 
 volumes:
   db-targets-data:

@@ -1,9 +1,10 @@
 import "dotenv/config";
 import express from "express";
 import http from "http";
-import { BlobServiceClient } from"@azure/storage-blob";
+import { BlobServiceClient } from "@azure/storage-blob";
 import amqp from 'amqplib';
 import multer from "multer";
+import { MongoClient } from 'mongodb';
 
 const port = '2000'
 const host = '0.0.0.0'
@@ -31,14 +32,27 @@ async function main() {
             console.log("Uploading picture...");
             await uploadPictureToAzureStorage(accountName, accountKey, containerName, req.body.filename, fileData);
             console.log("Picture uploaded successfully.");
+            
+            // Saving file information to MongoDB
+            const mongoClient = new MongoClient("mongodb://root:magicman@localhost:27018/",{auth: {
+                username: 'root',
+                password: 'magicman'
+            }});
+            await mongoClient.connect();
+            const db = mongoClient.db('targets');
+            const collection = db.collection('competition_files');
+            const fileInformation = {
+                filename: req.body.filename,
+                username: req.body.username,
+                start: req.body.start,
+                end: req.body.end,
+                competition_id: req.body.competition_id
+            };
+            await collection.insertOne(fileInformation);
+            console.log("File information saved to MongoDB.");
+    
             try {
-                const message = JSON.stringify({
-                    filename: req.body.filename,
-                    username: req.body.username,
-                    start: req.body.start,
-                    end: req.body.end,
-                    competition_id: req.body.competition_id
-                });
+                const message = JSON.stringify(fileInformation);
                 const connection = await amqp.connect('amqp://localhost');
                 const channel = await connection.createChannel();
                 const queueName = 'file_queue';
@@ -54,7 +68,6 @@ async function main() {
         } catch (error) {
             res.status(500).json({ error: 'Internal Server Error' });
             console.error('Error:', error);
-
         }
     });
         
