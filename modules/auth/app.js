@@ -10,8 +10,118 @@ const HOST = '0.0.0.0'
 
 const JWT_SECRET_KEY = "aghast-feed-crux-footpath-untimed-skincare-thyself-emotion";
 
+let connection;
+let channel;
+
+const receiveQueue = "mailConfirmed"
+const sendQueue = "confirmMail"
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+
+async function main(){
+
+    await setupAMQP(connection, channel, receiveQueue);
+
+    app.put('/api/auth/authenticateToken', async (req, res) => {
+        const token = req.body.authorization;
+        if (!token) return res.status(401).send();
+    
+        jwt.verify(token, JWT_SECRET_KEY, (err, rights) => {
+            if (err) return res.sendStatus(403);
+            res.status(200).send(rights);
+        });
+    });
+    
+    // Register a new user
+    app.post('/api/auth/register/:email', async (req, res) => {
+        
+        console.log(req.params.email, req.body.password)
+    
+    
+        if(req.params.email === null || typeof req.params.email !== "string"){
+            return res.status(400).send('Email not correct');
+        }
+    
+        if(req.body.password === null || typeof req.body.password !== "string"){
+            return res.status(400).send('Password not correct');
+        }
+        
+        try {
+            const pass = await bcrypt.hash(req.body.password, 10);
+            const user = { email: req.params.email, password: pass, confirmed: false };
+            await saveUser(user);
+            await sendConfirmEmailAMQP(channel, sendQueue, user.email);
+            res.status(201).send('User registered successfully');
+        } catch {
+            res.status(500).send("Internal Server Error");
+        }
+    });
+    
+    // Login and get JWT token
+    app.post('/api/auth/login/:email', async (req, res) => {
+        
+        if(req.params.email === null || typeof req.params.email !== "string"){
+            return res.status(400).send('Email not correct');
+        }
+        
+        if(req.body.password === null || typeof req.body.password !== "string"){
+            return res.status(400).send('Password not correct');
+        }
+    
+        try {
+            const user = await findUser(req.params.email);
+        
+            if (user === null) {
+                return res.sendStatus(404);
+            }
+    
+            if (await bcrypt.compare(req.body.password, user.password)) {
+                const rights = { email: user.email  };
+                
+                
+                const accessToken = jwt.sign(rights, JWT_SECRET_KEY);
+                res.json({ accessToken: accessToken });
+            } else {
+                res.status(401).send('Incorrect password');
+            }
+        } catch (err) {
+            console.log(err)
+            res.status(500).send("Internal Server Error");
+        }
+    });
+    
+    app.listen(PORT, HOST, () => {
+        console.info(`Started server on port ${PORT}`);
+    });
+}
+
+
+
+
+async function setupAMQP(connection, channel, queue){
+    try {
+        connection = await amqp.connect('amqp://localhost')
+        channel = await connection.createChannel();
+
+        console.log("Waiting for messages...")
+
+        channel.consume(queue, async (msg) => {
+            if (msg !== null) {
+                const email = msg.content.toString()
+                console.log('Received message:', email);
+            
+                
+                
+                channel.ack(msg);
+            }
+        })
+        
+    } catch (error) {
+        console.log("Could not setup AMQP connection")
+    }
+}
 
 async function setupDB(){
     
@@ -39,18 +149,24 @@ async function setupDB(){
     }
 }
 
+
 async function saveUser(user){
     
     const connection = await setupDB();
 
     try {
-        await connection.execute('INSERT INTO users (email, password) VALUES (?, ?)', [user.email, user.password]);
+        await connection.execute('INSERT INTO users (email, password) VALUES (?, ?)', [user.email, user.password])
     } catch(err) {
         console.log(err)
         throw err;
     } finally {
         connection.end();
     }
+}
+
+
+async function sendConfirmEmailAMQP(channel, queue, email){
+    channel.sendToQueue(queue, Buffer.from(email));
 }
 
 async function findUser(email){
@@ -74,74 +190,9 @@ async function findUser(email){
     }
 }
 
-app.put('/api/auth/authenticateToken', async (req, res) => {
-    const token = req.body.authorization;
-    if (!token) return res.status(401).send();
-
-    jwt.verify(token, JWT_SECRET_KEY, (err, rights) => {
-        if (err) return res.sendStatus(403);
-        res.status(200).send(rights);
-    });
-});
-
-// Register a new user
-app.post('/api/auth/register/:email', async (req, res) => {
-    
-    console.log(req.params.email, req.body.password)
 
 
-    if(req.params.email === null || typeof req.params.email !== "string"){
-        return res.status(400).send('Email not correct');
-    }
-
-    if(req.body.password === null || typeof req.body.password !== "string"){
-        return res.status(400).send('Password not correct');
-    }
-    
-    try {
-        const pass = await bcrypt.hash(req.body.password, 10);
-        const user = { email: req.params.email, password: pass };
-        await saveUser(user);
-        res.status(201).send('User registered successfully');
-    } catch {
-        res.status(500).send("Internal Server Error");
-    }
-});
-
-// Login and get JWT token
-app.post('/api/auth/login/:email', async (req, res) => {
-    
-    if(req.params.email === null || typeof req.params.email !== "string"){
-        return res.status(400).send('Email not correct');
-    }
-    
-    if(req.body.password === null || typeof req.body.password !== "string"){
-        return res.status(400).send('Password not correct');
-    }
-
-    try {
-        const user = await findUser(req.params.email);
-    
-        if (user === null) {
-            return res.sendStatus(404);
-        }
-
-        if (await bcrypt.compare(req.body.password, user.password)) {
-            const rights = { email: user.email  };
-            
-            
-            const accessToken = jwt.sign(rights, JWT_SECRET_KEY);
-            res.json({ accessToken: accessToken });
-        } else {
-            res.status(401).send('Incorrect password');
-        }
-    } catch (err) {
-        console.log(err)
-        res.status(500).send("Internal Server Error");
-    }
-});
-
-
-app.listen(PORT, HOST, () => {
-    console.info(`Started server on port ${PORT}`);
-});
+main().catch((err) => {
+    consolel.log(`Server error: ${err}`)
+    connection.close();
+})

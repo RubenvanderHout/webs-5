@@ -5,7 +5,6 @@ import { BlobServiceClient } from"@azure/storage-blob";
 import amqp from 'amqplib';
 import multer from "multer";
 
-
 const port = '2000'
 const host = '0.0.0.0'
 
@@ -160,11 +159,3 @@ async function streamToBuffer(readableStream) {
 
 
 main();
-
-
-
-
-
-    
-
-  
