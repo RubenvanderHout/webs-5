@@ -178,8 +178,8 @@ async function sendMessageToQueue(message) {
         const connection = await amqp.connect(AMQP_HOST);
         const channel = await connection.createChannel();
         const queueName = 'file_queue';
-        await channel.assertQueue(queueName, { durable: false });
-        channel.sendToQueue(queueName, Buffer.from(JSON.stringify(message)));
+        await channel.assertExchange(queueName,"fanout" , { durable: false });
+        channel.publish(queueName, Buffer.from(JSON.stringify(message)));
         console.log(`Message sent to queue '${queueName}':`, message);
         await channel.close();
         await connection.close();

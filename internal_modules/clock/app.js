@@ -83,7 +83,7 @@ async function checkEventEndTimes(){
     timings.forEach(timing => {
         const currentTime = new Date();
 
-        if (currentTime > timing.endTime) {
+        if (currentTime > timing.end) {
             sendtimings.push(timing); 
         }
     });

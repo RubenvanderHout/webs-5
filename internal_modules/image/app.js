@@ -3,10 +3,8 @@ import http from "http";
 import express from "express";
 import axios from "axios";
 import FormData from "form-data";
-import fs from "fs";
 import amqp from 'amqplib';
 import { MongoClient } from 'mongodb';
-import multer from 'multer';
 import { BlobServiceClient } from "@azure/storage-blob";
 
 
@@ -144,6 +142,27 @@ async function receiveMessageFromQueue() {
                 }
             }
         });
+        const timerchannel = await connection.createChannel();
+        const timerQueueName = 'calculation_time_queue';
+        await timerchannel.assertQueue(timerQueueName, { durable: false });
+        console.log(`Waiting for messages in queue '${timerQueueName}'...`);
+        channel.consume(timerQueueName, async (message) => {
+            if (message !== null) {
+                try {
+                    const content = JSON.parse(message.content.toString());
+                    console.log(`Received message from queue '${timerQueueName}':`, content);
+                    await upload();
+                    // Process the message here
+                    await compareImages();
+                    // Acknowledge message
+                    channel.ack(message);
+                } catch (error) {
+                    console.error('Error processing message:', error);
+                    // Reject message if unable to process
+                    channel.reject(message, false); // Set requeue to false
+                }
+            }
+        }
 
     } catch (error) {
         console.error('Error receiving messages from queue:', error);
@@ -176,85 +195,82 @@ async function downloadPictureFromAzureStorage(accountName, accountKey, containe
     return fileData;
 }
 
+async function compareImages() {
+    try {
+        // Extract the image path from the request body
+        console.log(req.body);
+        const competitionId = req.body.competitionId;
+        const mongoClient = await connectToMongoDB();
+        const collection = mongoClient.db('images').collection('competition_files');
+        const query = { competition_id: competitionId, end: { $ne: null } };
+        const image = await collection.find(query).toArray();
+        console.log(image);
+        console.log("Comparing images...");
+        const imageBuffer = await downloadPictureFromAzureStorage(accountName, accountKey, containerName, image[0].filename);
+        const comparisonResults = await compareImages(imageBuffer, 1.4, apiKey, apiSecret);
+        console.log("Images compared successfully.");
+        console.log(comparisonResults);
+        res.json(comparisonResults);
+    } catch (error) {
+        res.status(500).json({ error: 'Internal Server Error' });
+        console.error('Error:', error.response.data);
+    }
+}
+async function upload() {
+    try {
+        const competitionId = req.body.competitionId;
+        const mongoClient = await connectToMongoDB();
+        const collection = mongoClient.db('images').collection('competition_files');
+        const query = { competition_id: competitionId};
+        const images = await collection.find(query).toArray();
 
+        
+        console.log("Deleting previous data...");
+        // Perform deletion of previous data
+        await axios.delete('https://api.imagga.com/v2/similar-images/categories/general_v3/picturemmo', {
+            auth: {
+                username: apiKey,
+                password: apiSecret
+            }
+        });
+
+        console.log("Uploading images...");
+        console.log(images);
+        await Promise.all(images.map(async image  => {
+                const imageBuffer = await downloadPictureFromAzureStorage(accountName, accountKey, containerName, image.filename);
+                await uploadImage(imageBuffer, apiKey, apiSecret, image.email); // Upload the image to Imagga
+        }));
+
+        console.log("Images uploaded successfully.");
+        console.log("Training index...");
+        const ticketId = await trainIndex(apiKey, apiSecret);
+        if (!ticketId) {
+            console.log('No ticket id. Exiting');
+            res.status(500).json({ error: 'No ticket id' });
+            return;
+        }
+
+        console.log("Waiting for training to finish...");
+        const timeStarted = Date.now();
+        while (!(await isResolved(ticketId, apiKey, apiSecret))) {
+            const timePassed = (Date.now() - timeStarted) / 1000;
+            console.log(`Waiting for training to finish (time elapsed: ${timePassed.toFixed(1)}s)`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+
+        console.log("Training done.");
+
+        res.json("Training done.");
+    } catch (error) {
+        res.status(500).json({ error: 'Internal Server Error' });
+        console.error('Error:', error.response.data);
+    }
+}
 async function main() {
     const server = express();
     server.use(express.json());
     server.use(express.urlencoded({ extended: false }));
-    server.use(upload.none());
-    // List of paths of images to compare
-    // Route to handle image comparison
-    server.post('/upload', async (req, res) => {
-      try {
-            const competitionId = req.body.competitionId;
-            const mongoClient = await connectToMongoDB();
-            const collection = mongoClient.db('images').collection('competition_files');
-            const query = { competition_id: competitionId};
-            const images = await collection.find(query).toArray();
-
-            
-            console.log("Deleting previous data...");
-            // Perform deletion of previous data
-            await axios.delete('https://api.imagga.com/v2/similar-images/categories/general_v3/picturemmo', {
-                auth: {
-                    username: apiKey,
-                    password: apiSecret
-                }
-            });
     
-            console.log("Uploading images...");
-            console.log(images);
-            await Promise.all(images.map(async image  => {
-                    const imageBuffer = await downloadPictureFromAzureStorage(accountName, accountKey, containerName, image.filename);
-                    await uploadImage(imageBuffer, apiKey, apiSecret, image.email); // Upload the image to Imagga
-            }));
-    
-            console.log("Images uploaded successfully.");
-            console.log("Training index...");
-            const ticketId = await trainIndex(apiKey, apiSecret);
-            if (!ticketId) {
-                console.log('No ticket id. Exiting');
-                res.status(500).json({ error: 'No ticket id' });
-                return;
-            }
-    
-            console.log("Waiting for training to finish...");
-            const timeStarted = Date.now();
-            while (!(await isResolved(ticketId, apiKey, apiSecret))) {
-                const timePassed = (Date.now() - timeStarted) / 1000;
-                console.log(`Waiting for training to finish (time elapsed: ${timePassed.toFixed(1)}s)`);
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
-    
-            console.log("Training done.");
-    
-            res.json("Training done.");
-       } catch (error) {
-            res.status(500).json({ error: 'Internal Server Error' });
-            console.error('Error:', error.response.data);
-        }
-    });
-    server.post('/comp', async (req, res) => {
-        try {
-            // Extract the image path from the request body
-            console.log(req.body);
-            const competitionId = req.body.competitionId;
-            const mongoClient = await connectToMongoDB();
-            const collection = mongoClient.db('images').collection('competition_files');
-            const query = { competition_id: competitionId, end: { $ne: null } };
-            const image = await collection.find(query).toArray();
-            console.log(image);
-            console.log("Comparing images...");
-            const imageBuffer = await downloadPictureFromAzureStorage(accountName, accountKey, containerName, image[0].filename);
-            const comparisonResults = await compareImages(imageBuffer, 1.4, apiKey, apiSecret);
-            console.log("Images compared successfully.");
-            console.log(comparisonResults);
-            res.json(comparisonResults);
-        } catch (error) {
-            res.status(500).json({ error: 'Internal Server Error' });
-            console.error('Error:', error.response.data);
-        }
-    });
     const app = http.createServer(server);
 
     app.listen(port, host, () => {
@@ -263,6 +279,5 @@ async function main() {
     receiveMessageFromQueue()
 
 }
-const upload = multer();
 
 main();
