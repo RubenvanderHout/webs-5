@@ -95,30 +95,30 @@ async function setupAMQP(){
 
 async function insertCompetitionData(competition){
     // Extract the id of the only competition in the json
-    const competitionId = Object.keys(competition)[0];
+    const competitionId = Object.keys(competition)[1];
 
     try {
         const competitionsCollection = db.collection('competitions');
-        const entries = jsonData[competitionId];
+        const entries = competition[competitionId];
     
         for (const entry of entries) {
-          const { email, username, score } = entry;
+          const { distance, id } = entry;
     
+          let email = id;
+          let score = distance  
+
           // Insert or update user information
           await competitionsCollection.insertOne({
             competitionId: ObjectId(competitionId),
             user: {
-              username,
               email,
               score
             }
           });
         }
-    
-        res.send('Data insertion completed successfully');
+
       } catch (err) {
         console.error('Error inserting data: ' + err);
-        res.status(500).send('Internal Server Error');
       }
 }
 
