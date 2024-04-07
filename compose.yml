@@ -1,10 +1,10 @@
 version: '3'
 
 services:
-  webs5-rabbitmq:
+  rabbitmq:
       image: rabbitmq:3.13-management-alpine
       container_name: webs5-rabbitmq
       restart: always
       ports:
-        - "5672:5672"  # AMQP
-        - "15672:15672"  # RabbitMQ Management UI
+        - "5672:5672"  
+        - "15672:15672" 

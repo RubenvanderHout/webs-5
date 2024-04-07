@@ -20,8 +20,9 @@ const transporter = nodemailer.createTransport({
 let connection;
 let channel;
 
-const receiveQueue = "confirmMail"
+const receiveConfirmQueue = "confirmMail"
 const sendQueue = "mailConfirmed"
+const recieveScoreQueue = "scores"
 
 async function main() {
     const app = express();
@@ -69,11 +70,11 @@ async function setupAMQP(){
 
         console.log("Waiting for messages...")
 
-        channel.assertQueue(receiveQueue,  {
+        channel.assertQueue(receiveConfirmQueue,  {
             durable: false
         });
 
-        channel.consume(receiveQueue, async (msg) => {
+        channel.consume(receiveConfirmQueue, async (msg) => {
             if (msg !== null) {
                 const string = msg.content.toString()
                 const user = JSON.parse(string);

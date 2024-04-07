@@ -1,5 +1,5 @@
 import express from "express"
-import { CircuitBreaker } from "opossum"
+import { CircuitBreaker } from ""
 
 const port = '1000'
 const host = '0.0.0.0'

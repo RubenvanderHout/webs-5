@@ -2,10 +2,10 @@
   "name": "targets",
   "version": "1.0.0",
   "description": "",
-  "main": "app.js",
+  "main": "gateway.js",
   "type": "module",
   "scripts": {
-    "start": "node app.js"
+    "start": "node gateway.js"
   },
   "keywords": [],
   "author": "",
