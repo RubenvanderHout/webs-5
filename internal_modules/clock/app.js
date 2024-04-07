@@ -2,7 +2,6 @@ import "dotenv/config";
 import { MongoClient, Collection, ObjectId } from "mongodb"
 import amqp from "amqplib"
 
-const uri = process.env.DB_CONNECTION_STRING
 
 const AMQP_HOST = process.env.AMQP_HOST
 let connection
@@ -11,6 +10,7 @@ let channel
 const receiveQueueCompTime = process.env.QUEUE_RECEIVE_COMPTIME
 const sendQueueCompTimeUp = process.env.QUEUE_SEND_COMPTIMEUP
 
+const uri = process.env.DB_CONNECTION_STRING
 const client = new MongoClient(uri);
 
 let timings = [];
@@ -35,6 +35,7 @@ async function connectMongoDB() {
         collection = db.collection('competitionTimings');
     } catch (err) {
         console.error('Error connecting to MongoDB:', err);
+        process.exit(1);
     }
 }
 

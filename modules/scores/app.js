@@ -1,73 +1,135 @@
 import "dotenv/config";
 import express from "express"
+import amqp from "amqplib"
+import { MongoClient, ObjectId } from "mongodb"
+
 
 const port = process.env.PORT
 const host = process.env.HOST
 
+const receiveCompetitionDataQueue = process.env.QUEUE_RECEIVE_SCORES;
+const sendEmailRequestQueue = process.env.QUEUE_SEND_EMAIL_REQUEST
+
+
+const uri = process.env.DB_CONNECTION_STRING
+const client = new MongoClient(uri);
+
+const AMQP_HOST = process.env.AMQP_HOST;
+
+
+let db;
+let channel;
+
+/** @type mysql.connection */
+let connection = null;
+
 async function main() {
-    await setupDB();
-    const server = express();
-    server.use(express.json());
-    server.use(express.urlencoded({ extended: false }));
+    await connectMongoDB();
+    await setupAMQP();
+    const app = express();
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: false }));
 
-    // Get all competitions with scores
-    app.get("/api/competitions/scores", async (req, res) => {
+    // Get all your competitions with your scores
+    app.get("/api/competitions/scores", async (_, res) => {
+        try {
+            const competitionsCollection = db.collection('competitions');
         
+            const allCompetitions = await competitionsCollection.find({}).toArray();
+        
+            res.json(allCompetitions);
+        } catch (err) {
+            console.error('Error retrieving competitions: ' + err);
+            res.status(500).send('Internal Server Error');
+        }
     })
-
-    // Get competition
-
-
-
-
 
     app.listen(port, host, () => {
         console.info(`Started server on port ${port}`);
     });
 }
 
-
-async function setupDB(){
-    
+async function connectMongoDB() {
     try {
-        const connection = await mysql.createConnection({
-            host: process.env.HOST,
-            user: process.env.DB.USER,
-            password: process.env.DB_PASSWORD,
-            database: process.env.DB_DATABASE,
-            port: process.env.DB_PORT
+        console.log('Connecting to MongoDB');
+        await client.connect();
+        console.log('Connected to MongoDB');
+        db = client.db('competitions');
+    } catch (err) {
+        console.error('Error connecting to MongoDB:', err);
+    }
+}
+
+async function setupAMQP(){
+    try {
+        connection = await amqp.connect(AMQP_HOST)
+        channel = await connection.createChannel();
+
+        console.log("Waiting for messages...")
+
+        channel.assertQueue(receiveCompetitionDataQueue, {
+            durable: false
         });
 
-        // Create users table if it doesn't exist
-        await connection.execute(`
-            -- Users table
-            CREATE TABLE IF NOT EXISTS users (
-                username VARCHAR(250) PRIMARY KEY NOT NULL,
-                email VARCHAR(250) NOT NULL,
-            );
-            
-            -- Competitions table
-            CREATE TABLE IF NOT EXISTS competitions (
-                competition_id INT PRIMARY KEY AUTO_INCREMENT,
-                competition_name VARCHAR(250) NOT NULL
-            );
-            
-            -- Scores table
-            CREATE TABLE IF NOT EXISTS scores (
-                score_id INT PRIMARY KEY AUTO_INCREMENT,
-                username VARCHAR(250),
-                competition_id INT,
-                score_value INT,
-                FOREIGN KEY (username) REFERENCES users(username),
-                FOREIGN KEY (competition_id) REFERENCES competitions(competition_id)
-            );
-        `);
+        channel.consume(receiveCompetitionDataQueue, async (msg) => {
+            if (msg !== null) {
+                const string = msg.content.toString()
+                const competition = JSON.parse(string);
 
-        return connection;
+                insertCompetitionData(competition)
+                sendCompitionEmails(competition);
+
+                channel.ack(msg);
+            }
+        })
+
+        channel.assertQueue()
+
+
+        
     } catch (error) {
-        console.error('Error setting up database:', error);
-        throw error;
+        console.log(`Could not setup AMQP connection, ${error}`)
+        process.exit(1);
     }
+}
+
+async function insertCompetitionData(competition){
+    // Extract the id of the only competition in the json
+    const competitionId = Object.keys(competition)[0];
+
+    try {
+        const competitionsCollection = db.collection('competitions');
+        const entries = jsonData[competitionId];
+    
+        for (const entry of entries) {
+          const { email, username, score } = entry;
+    
+          // Insert or update user information
+          await competitionsCollection.insertOne({
+            competitionId: ObjectId(competitionId),
+            user: {
+              username,
+              email,
+              score
+            }
+          });
+        }
+    
+        res.send('Data insertion completed successfully');
+      } catch (err) {
+        console.error('Error inserting data: ' + err);
+        res.status(500).send('Internal Server Error');
+      }
+}
+
+async function sendCompitionEmails(data){
+    const string = JSON.stringify(data)
+
+    channel.assertQueue(sendEmailRequestQueue,  {
+        durable: false
+    });
+
+    channel.sendToQueue(sendEmailRequestQueue, Buffer.from(string));
 }
 
 
