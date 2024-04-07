@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express"
 import proxy from 'express-http-proxy';
+import axios from 'axios';
 
 const port = process.env.PORT
 const host = process.env.HOST
@@ -28,15 +29,15 @@ async function authMiddleware(req, res, next) {
         const response = await axios.put(url, data);
 
         if (response.status === 200) {
-            const newAuthorizationHeader = `Bearer ${response.data.token}`;
-            req.headers.authorization = newAuthorizationHeader;
+            //const newAuthorizationHeader = `Bearer ${response.data.token}`;
+            //req.headers.authorization = newAuthorizationHeader;
             next();
         } else {
             res.status(403).send('Authentication failed');
             return 
         }
     } catch (error) {
-       res.status(500).send('Could not authenticate JWT');
+       res.status(500).send('Could not authenticate JWT'+ error);
        return 
     }
 }

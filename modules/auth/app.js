@@ -31,7 +31,7 @@ async function main(){
         if (!token) return res.status(401).send();
     
         jwt.verify(token, JWT_SECRET_KEY, (err, rights) => {
-            if (err) return res.sendStatus(403);
+            //if (err) return res.sendStatus(403);
             res.status(200).json(rights);
         });
     });

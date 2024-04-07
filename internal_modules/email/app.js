@@ -23,7 +23,6 @@ let connection;
 let channel;
 
 const receiveConfirmQueue = "confirmMail"
-const recieveScoreQueue = "scores"
 const sendQueue = "mailConfirmed"
 
 async function main() {
@@ -88,20 +87,6 @@ async function setupAMQP(){
             }
         })
 
-        channel.assertQueue(recieveScoreQueue,   {
-            durable: false
-        }); 
-        
-        channel.consume(recieveScoreQueue, async (msg) => {
-            if(msg !== null){
-                const string = msg.content.toString();
-                const scoreData = JSON.parse(string);
-                console.log(`Receiverd message: ${scoreData}`)
-
-                await sendScoreData(data);
-            }
-        })
-
     } catch (error) {
         console.log(`Could not setup AMQP connection: ${error}`)
     }
@@ -151,39 +136,6 @@ function setupHtmlContent(token){
         <body>
             <h2>Confirm Your Email</h2>
             <p>Hello, please confirm your email by clicking the button below:</p>
-            <button><a href="http://localhost:7000/confirm/${token}">Confirm Email</a></button>
-        </body>
-        </html>
-    `;
-}
-
-async function sendScoreData(data){
-    
-    const competitionId = Object.keys(data)[1];
-
-    const entries = data[competitionId];
-
-    entries.forEach(participant => {
-        transporter.sendMail({
-            from: 'Brown Zulauf <brown.zulauf@ethereal.email>',
-            to: participant.id,
-            subject: "Email confirmed", 
-            html: setupHtmlScore(participant.name, participant.distance), 
-        });    
-    });
-}
-
-
-function setupHtmlScore(username, score){
-    return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Email Confirmation</title>
-        </head>
-        <body>
-            <h2>Confirm Your Email</h2>
-            <p>Hello, the result is back!!! you have an ${score}</p>
             <button><a href="http://localhost:7000/confirm/${token}">Confirm Email</a></button>
         </body>
         </html>

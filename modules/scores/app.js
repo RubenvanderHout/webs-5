@@ -75,10 +75,8 @@ async function setupAMQP(){
             if (msg !== null) {
                 const string = msg.content.toString()
                 const competition = JSON.parse(string);
-
+                console.log(competition)
                 insertCompetitionData(competition)
-                sendCompitionEmails(competition);
-
                 channel.ack(msg);
             }
         })
@@ -95,12 +93,13 @@ async function setupAMQP(){
 
 async function insertCompetitionData(competition){
     // Extract the id of the only competition in the json
-    const competitionId = Object.keys(competition)[1];
+    const competitionId = Object.keys(competition)[2];
 
     try {
         const competitionsCollection = db.collection('competitions');
+        console.log(competitionId)
         const entries = competition[competitionId];
-    
+        console.log(entries)
         for (const entry of entries) {
           const { distance, id } = entry;
     
@@ -109,7 +108,7 @@ async function insertCompetitionData(competition){
 
           // Insert or update user information
           await competitionsCollection.insertOne({
-            competitionId: ObjectId(competitionId),
+            competitionId: competitionId,
             user: {
               email,
               score
@@ -117,20 +116,11 @@ async function insertCompetitionData(competition){
           });
         }
 
-      } catch (err) {
+    } catch (err) {
         console.error('Error inserting data: ' + err);
       }
 }
 
-async function sendCompitionEmails(data){
-    const string = JSON.stringify(data)
-
-    channel.assertQueue(sendEmailRequestQueue,  {
-        durable: false
-    });
-
-    channel.sendToQueue(sendEmailRequestQueue, Buffer.from(string));
-}
 
 
 main();

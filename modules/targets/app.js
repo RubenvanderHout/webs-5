@@ -21,10 +21,10 @@ async function main() {
     server.use(express.urlencoded({ extended: false }));
 
     // Routes
-    server.post('/upload', upload.single('file'), uploadPicture);
-    server.get('/target/:competitionId', getFilesByCompetitionId);
-    server.get('/target', getAllFiles);
-    server.get('/download', downloadPicture);
+    server.post('/api/targets/upload', upload.single('file'), uploadPicture);
+    server.get('/api/targets/target/:competitionId', getFilesByCompetitionId);
+    server.get('/api/targets/target', getAllFiles);
+    server.get('/api/targets/download', downloadPicture);
 
     const app = http.createServer(server);
     app.listen(port, () => {
@@ -55,7 +55,6 @@ async function uploadPicture(req, res) {
             filename: req.body.filename,
             username: decodedToken.username, // Extracting username from the decoded token
             email: decodedToken.email, // Extracting email from the decoded token
-            start: req.body.start,
             end: req.body.end,
             competition_id: competitionId
         };
@@ -175,11 +174,12 @@ async function streamToBuffer(readableStream) {
 // Function to send message to queue
 async function sendMessageToQueue(message) {
     try {
+        console.log('Sending message to queue:', message);
         const connection = await amqp.connect(AMQP_HOST);
         const channel = await connection.createChannel();
-        const queueName = 'file_queue';
-        await channel.assertExchange(queueName,"fanout" , { durable: false });
-        channel.publish(queueName, Buffer.from(JSON.stringify(message)));
+        const queueName = 'file_exchange';
+        await channel.assertExchange(queueName, "fanout", { durable: false });
+        channel.publish(queueName, '', Buffer.from(JSON.stringify(message)));
         console.log(`Message sent to queue '${queueName}':`, message);
         await channel.close();
         await connection.close();

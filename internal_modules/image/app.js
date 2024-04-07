@@ -40,8 +40,16 @@ async function uploadImage(imagePath, apiKey, apiSecret, user) {
         save_index: "picturemmo"
     }
     try {
-    const response = await axios.post(categorizerEndpoint, formData, { headers, params });
-    return response.data.result.upload_id;
+        const response = await new Promise((resolve, reject) => {
+            setTimeout(async () => {
+                try {
+                    const response = await axios.post(categorizerEndpoint, formData, { headers, params });
+                    resolve(response);
+                } catch (error) {
+                    reject(error);
+                }
+            }, 500); // Delay of 500 milliseconds
+        });    return response.data.result.upload_id;
     } catch (error) {
         console.error('Error uploading image:');
         console.error('Error:', error.response.data);
@@ -98,9 +106,8 @@ async function compareImages(referenceImage, distanceThreshold, apiKey, apiSecre
 
     // Add the reference image
     formData.append('image',referenceImage);
+    console.log(formData);
 
-
-    //try {
         const response = await axios.post(comparisonEndpoint, formData, {
             params: { distance: distanceThreshold },
             auth: {
@@ -111,22 +118,24 @@ async function compareImages(referenceImage, distanceThreshold, apiKey, apiSecre
         });
 
         return response.data.result;
-    /*} catch (error) {
-        console.error('Error comparing images:', error.response ? error.response.data : error.message);
-        throw error;
-    }*/
 }
 
 async function receiveMessageFromQueue() {
     try {
         const connection = await amqp.connect('amqp://localhost');
         const channel = await connection.createChannel();
+        const exchange = 'file_exchange';
         const queueName = 'file_queue';
+        await channel.assertExchange(exchange,"fanout",  { durable: false });
+
+        console.log(`Waiting for messages in exchange '${exchange}'...`);
+        // Assert the shared queue
         await channel.assertQueue(queueName, { durable: false });
 
-        console.log(`Waiting for messages in queue '${queueName}'...`);
-
-        channel.consume(queueName, async (message) => {
+        // Bind the queue to the exchange
+        await channel.bindQueue(queueName, exchange, '');
+                
+          channel.consume(queueName, async (message) => {
             if (message !== null) {
                 try {
                     const content = JSON.parse(message.content.toString());
@@ -151,9 +160,10 @@ async function receiveMessageFromQueue() {
                 try {
                     const content = JSON.parse(message.content.toString());
                     console.log(`Received message from queue '${timerQueueName}':`, content);
-                    await upload();
+                    
+                    await upload(content.competition_id);
                     // Process the message here
-                    await startcomparison();
+                    await startcomparison(content.competition_id);
                     // Acknowledge message
                     channel.ack(message);
                 } catch (error) {
@@ -195,11 +205,9 @@ async function downloadPictureFromAzureStorage(accountName, accountKey, containe
     return fileData;
 }
 
-async function startcomparison() {
+async function startcomparison(competitionId) {
     try {
         // Extract the image path from the request body
-        console.log(req.body);
-        const competitionId = req.body.competitionId;
         const mongoClient = await connectToMongoDB();
         const collection = mongoClient.db('images').collection('competition_files');
         const query = { competition_id: competitionId, end: { $ne: null } };
@@ -210,15 +218,30 @@ async function startcomparison() {
         const comparisonResults = await compareImages(imageBuffer, 1.4, apiKey, apiSecret);
         console.log("Images compared successfully.");
         console.log(comparisonResults);
-        res.json(comparisonResults);
+        sendMessageToQueue(comparisonResults);
     } catch (error) {
-        res.status(500).json({ error: 'Internal Server Error' });
-        console.error('Error:', error.response.data);
+        console.error('Error:', error);
     }
 }
-async function upload() {
+
+async function sendMessageToQueue(message) {
     try {
-        const competitionId = req.body.competitionId;
+        console.log('Sending message to queue:');
+        const connection = await amqp.connect('amqp://localhost');
+        const channel = await connection.createChannel();
+        const queueName = 'scoresReceive';
+        await channel.assertQueue(queueName, { durable: false });
+        channel.sendToQueue(queueName, Buffer.from(JSON.stringify(message)));
+        console.log(`Message sent to queue '${queueName}':`, message);
+        await channel.close();
+        await connection.close();
+    } catch (error) {
+        console.error('Error sending message to queue:', error);
+    }
+}
+
+async function upload(competitionId) {
+    try {
         const mongoClient = await connectToMongoDB();
         const collection = mongoClient.db('images').collection('competition_files');
         const query = { competition_id: competitionId};
@@ -227,12 +250,16 @@ async function upload() {
         
         console.log("Deleting previous data...");
         // Perform deletion of previous data
-        await axios.delete('https://api.imagga.com/v2/similar-images/categories/general_v3/picturemmo', {
-            auth: {
-                username: apiKey,
-                password: apiSecret
-            }
-        });
+        try{
+            await axios.delete('https://api.imagga.com/v2/similar-images/categories/general_v3/picturemmo', {
+                auth: {
+                    username: apiKey,
+                    password: apiSecret
+                }
+            });
+        } catch (error) {
+            console.error('Error deleting previous data:', error.response.data);
+        }
 
         console.log("Uploading images...");
         console.log(images);
@@ -246,7 +273,6 @@ async function upload() {
         const ticketId = await trainIndex(apiKey, apiSecret);
         if (!ticketId) {
             console.log('No ticket id. Exiting');
-            res.status(500).json({ error: 'No ticket id' });
             return;
         }
 
@@ -260,10 +286,8 @@ async function upload() {
 
         console.log("Training done.");
 
-        res.json("Training done.");
     } catch (error) {
-        res.status(500).json({ error: 'Internal Server Error' });
-        console.error('Error:', error.response.data);
+        console.error('Error:', error);
     }
 }
 async function main() {

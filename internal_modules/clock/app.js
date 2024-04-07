@@ -43,18 +43,20 @@ async function setupAMQP(){
     try {
         connection = await amqp.connect(AMQP_HOST)
         channel = await connection.createChannel();
+        const exchange = 'file_exchange';
 
+        await channel.assertExchange(exchange,"fanout",  { durable: false });
         console.log("Waiting for messages...")
 
         channel.assertQueue(receiveQueueCompTime,  {
             durable: false
         });
+        await channel.bindQueue(receiveQueueCompTime, exchange, '');
 
         channel.consume(receiveQueueCompTime, async (msg) => {
             if (msg !== null) {
-                const string = msg.content.toString()
-                const timing = JSON.parse(string);
-            
+                const string = JSON.parse(msg.content.toString())
+                const timing = string;
                 saveTiming(timing)
 
                 channel.ack(msg);
@@ -65,13 +67,23 @@ async function setupAMQP(){
         console.log(`Could not setup AMQP connection ${error}`)
         process.exit(1);
     }
-}
+}   
 
-function saveTiming(timing){
-    collection.save(timing);
+async function saveTiming(timing){
+    try{
+        console.log("Saving timing:", timing);
+        if (timing.end !== null) {
+            console.log("Timing has end time");
+            await collection.insertOne(timing);
+        }
+    } catch (error) {
+        console.error("Error saving timing:", error);
+    }
+
 }
 
 async function checkEventEndTimes(){
+    try {
 
     console.log("Checking timings...");
 
@@ -90,9 +102,14 @@ async function checkEventEndTimes(){
 
     const toBeRemoved = await sendTimings(sendtimings);
     await deleteTimings(toBeRemoved);
-
+    
+        }
+    catch (error) {
+        console.error("Error checking timings:", error);
+    }
     // Call this function again until end of time
     setTimeout(checkEventEndTimes, 2000);
+
 }
 
 async function sendTimings(timings){
@@ -105,7 +122,7 @@ async function sendTimings(timings){
         });
 
         timings.forEach(timing => {
-            channel.sendToQueue(queue, Buffer.from(JSON.stringify(timing)));
+            channel.sendToQueue(sendQueueCompTimeUp, Buffer.from(JSON.stringify(timing)));
             toBeRemoved.push(timing._id);
             console.log(" [x] Sent '%s'", timing);
         });
@@ -117,12 +134,16 @@ async function sendTimings(timings){
 }
 
 async function deleteTimings(timings){
-    if (timings.length > 0) {
-        try {
-            await collection.deleteMany({ _id: { $in: timings.map(id => ObjectId(id)) } });
-        } catch (err) {
-            console.error('Error deleting timings:', err);
+    try {
+        if (timings.length > 0) {
+            try {
+                await collection.deleteMany({ _id: { $in: timings.map(id => id )} });
+            } catch (err) {
+                console.error('Error deleting timings:', err);
+            }
         }
+    } catch (error) {  
+        console.error(error);
     }
 }
 
