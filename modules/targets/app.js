@@ -10,7 +10,7 @@ const port = process.env.PORT
 
 const MONGO_URI = process.env.DB_CONNECTION_STRING
 const AMQP_HOST = process.env.AMQP_HOST
-const accountName = process.env.BLOB_ACCOUNT_NAME;
+const accountName = process.env.BLOB_ACCOUNT_NAME
 const accountKey = process.env.BLOB_ACCOUNT_KEY
 const containerName = process.env.BLOB_CONTAINER_NAME
 
@@ -120,7 +120,16 @@ async function getNextCompetitionId(collection) {
                                    .sort({ competition_id: -1 })
                                    .limit(1)
                                    .toArray();
-    return result.length > 0 ? result[0].competition_id + 1 : 1;
+    if (result.length === 0) {
+        return 0;
+    }
+    else {
+        const highestCompetitionId = result[0].competition_id; // Example value, replace this with your actual value
+        const parsedId = parseInt(highestCompetitionId);
+        const incrementedId = parsedId + 1;
+        const incrementedIdString = incrementedId.toString();
+        return incrementedIdString
+    }
 }
 
 // Function to upload picture to Azure Storage
