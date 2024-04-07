@@ -56,7 +56,7 @@ async function main() {
             });
 
             sendEmailConfirmedAMQP(user);
-            res.send('Confirmation received');
+            return res.send('Confirmation received');
         });
     })
 
@@ -80,7 +80,7 @@ async function setupAMQP(){
             if (msg !== null) {
                 const string = msg.content.toString()
                 const user = JSON.parse(string);
-                console.log(`Receiverd message: ${user}`)
+                console.log(`Received message: ${user}`)
             
                 await sendConfimation(user);
                 
@@ -88,7 +88,11 @@ async function setupAMQP(){
             }
         })
 
-        channel.assertQueue(recieveScoreQueue, async (msg) => {
+        channel.assertQueue(recieveScoreQueue,   {
+            durable: false
+        }); 
+        
+        channel.consume(recieveScoreQueue, async (msg) => {
             if(msg !== null){
                 const string = msg.content.toString();
                 const scoreData = JSON.parse(string);
@@ -97,9 +101,9 @@ async function setupAMQP(){
                 await sendScoreData(data);
             }
         })
-          
+
     } catch (error) {
-        console.log("Could not setup AMQP connection")
+        console.log(`Could not setup AMQP connection: ${error}`)
     }
 }
 
@@ -108,7 +112,7 @@ async function sendConfimation(user) {
     try {
         const token = jwt.sign({ username: user.username, email: user.email }, JWT_SECRET);
         
-        console.log(user.email)
+        console.log(user)
         
         const info = await transporter.sendMail({
             from: '"Brown Zulauf" <brown.zulauf@ethereal.email>',

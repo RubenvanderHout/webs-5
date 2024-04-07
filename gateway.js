@@ -1,40 +1,20 @@
+import "dotenv/config";
 import express from "express"
-import { CircuitBreaker } from "opossum"
+import proxy from 'express-http-proxy';
 
 const port = process.env.PORT
 const host = process.env.HOST
 
-const circuitBreaker = new CircuitBreaker({
-    timeout: process.env.CIRCUIT_TIMEOUT, // Timeout in milliseconds
-    errorThresholdPercentage: process.env.CIRCUIT_ERROR_THRESHOLD, // Error threshold percentage to trip the circuit
-    resetTimeout: process.env.CIRCUIT_RESET_TIMEOUT, // Time in milliseconds to wait before attempting to close the circuit again
-});
-
 const app = express();
-const proxy = httpProxy.createProxyServer();
 
 const authsUrl = process.env.URL_AUTH
 const scoresUrl = process.env.URL_SCORES
 const targetsUrl = process.env.URL_TARGETS
 
-async function doCircuitBreak(url, req, res){
-    try {
-        const response = await circuitBreaker.fire(() => {
-            return new Promise((resolve, reject) => {
-                proxy.web(req, res, { target: url }, (err) => {
-                    reject(err);
-                });
-            });
-        });
-        res.send(response);
-    } catch (error) {
-        res.status(500).send('Service unavailable');
-    }
-}
-
-const authMiddleware = async function(req, res, next){
+async function authMiddleware(req, res, next) {
     if (req.url.startsWith("/api/auth")) {
         next();
+        return
     }
 
     const header = req.headers.authorization;
@@ -48,31 +28,37 @@ const authMiddleware = async function(req, res, next){
         const response = await axios.put(url, data);
 
         if (response.status === 200) {
-            req.bearer = response.data;
+            const newAuthorizationHeader = `Bearer ${response.data.token}`;
+            req.headers.authorization = newAuthorizationHeader;
+            next();
         } else {
-            return res.status(403).send('Authentication failed');
+            res.status(403).send('Authentication failed');
+            return 
         }
     } catch (error) {
-        return res.status(500).send('Could not authenticate JWT');
+       res.status(500).send('Could not authenticate JWT');
+       return 
     }
-
-    next();
 }
 
 app.use(authMiddleware)
 
-app.all("/api/auth/*", async (req, res) => {
-    doCircuitBreak(authsUrl + req.url, req, res);
-});
+app.all("/api/auth/*", (req, res, next) => {
+    console.log('Forwarding request to:', authsUrl + req.url);
+    next();
+}, proxy(authsUrl));
 
-app.all("/api/scores/*", async (req, res) => {
-    doCircuitBreak(scoresUrl + req.url, req, res);
-});
+app.all("/api/scores/*", (req, res, next) => {
+    console.log('Forwarding request to:', scoresUrl + req.url);
+    next();
+}, proxy(scoresUrl));
 
-app.all("/api/targets/*", async (req, res) => {
-    doCircuitBreak(targetsUrl + req.url, req, res);
-});
+app.all("/api/targets/*", (req, res, next) => {
+    console.log('Forwarding request to:', targetsUrl + req.url);
+    next();
+}, proxy(targetsUrl));
+
 
 app.listen(port, host, () => {
-    logger.info(`Started server on port ${port}`);
+    console.info(`Started server on port ${port}`);
 });
