@@ -5,6 +5,7 @@ import { BlobServiceClient } from "@azure/storage-blob";
 import amqp from 'amqplib';
 import multer from "multer";
 import { MongoClient } from 'mongodb';
+import jwt from 'jsonwebtoken';
 
 const port = process.env.PORT
 
@@ -41,14 +42,19 @@ async function uploadPicture(req, res) {
         await uploadPictureToAzureStorage(accountName, accountKey, containerName, req.body.filename, fileData);
         console.log("Picture uploaded successfully.");
 
+        // Assuming req.headers.authorization contains the JWT token
+        console.log(req.headers.authorization);
+        const token = req.headers.authorization.split(' ')[1];
+        const decodedToken = jwt.verify(token, 'secret_key_123'); // replace 'your_secret_key' with your actual secret key
+
         const mongoClient = await connectToMongoDB();
         const collection = mongoClient.db('targets').collection('competition_files');
         const competitionId = req.body.end ? await getNextCompetitionId(collection) : req.body.competition_id;
 
         const fileInformation = {
             filename: req.body.filename,
-            username: req.body.username,
-            email: req.body.email,
+            username: decodedToken.username, // Extracting username from the decoded token
+            email: decodedToken.email, // Extracting email from the decoded token
             start: req.body.start,
             end: req.body.end,
             competition_id: competitionId
