@@ -80,14 +80,24 @@ async function setupAMQP(){
             if (msg !== null) {
                 const string = msg.content.toString()
                 const user = JSON.parse(string);
-                console.log('Received message:', user);
+                console.log(`Receiverd message: ${user}`)
             
                 await sendConfimation(user);
                 
                 channel.ack(msg);
             }
         })
-        
+
+        channel.assertQueue(recieveScoreQueue, async (msg) => {
+            if(msg !== null){
+                const string = msg.content.toString();
+                const scoreData = JSON.parse(string);
+                console.log(`Receiverd message: ${scoreData}`)
+
+                await sendScoreData(data);
+            }
+        })
+          
     } catch (error) {
         console.log("Could not setup AMQP connection")
     }
@@ -143,6 +153,34 @@ function setupHtmlContent(token){
     `;
 }
 
+async function sendScoreData(data){
+    
+    data.forEach(participant => {
+        transporter.sendMail({
+            from: 'Brown Zulauf <brown.zulauf@ethereal.email>',
+            to: participant.email,
+            subject: "Email confirmed", 
+            html: setupHtmlScore(participant.name, participant.score), 
+        });    
+    });
+}
+
+
+function setupHtmlScore(username, score){
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Email Confirmation</title>
+        </head>
+        <body>
+            <h2>Confirm Your Email</h2>
+            <p>Hello, ${username} the result is back!!! you have an ${score}</p>
+            <button><a href="http://localhost:7000/confirm/${token}">Confirm Email</a></button>
+        </body>
+        </html>
+    `;
+}
 
 
 main().catch((err) => {
