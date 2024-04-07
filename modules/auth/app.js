@@ -32,7 +32,7 @@ async function main(){
     
         jwt.verify(token, JWT_SECRET_KEY, (err, rights) => {
             if (err) return res.sendStatus(403);
-            res.status(200).send(rights);
+            res.status(200).json(rights);
         });
     });
     
@@ -82,7 +82,7 @@ async function main(){
             }
 
             if (await bcrypt.compare(req.body.password, user.password)) {
-                const rights = { username: user.username, email: user.email, confirmed: user.confirmed };
+                const rights = { username: user.username, email: user.email};
                 const accessToken = jwt.sign(rights, JWT_SECRET_KEY);
                 res.json({ token: accessToken });
             } else {

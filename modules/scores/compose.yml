@@ -1,20 +1,16 @@
 version: '3'
 
 services:
-  db-scores:
-    image: mysql:8.3.0
-    restart: always
-    container_name: db-dev
-    command: --default-authentication-plugin=mysql_native_password
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: scores
-      MYSQL_USER: user
-      MYSQL_PASSWORD: magicman
-    volumes:
-      - db-scores-data:/var/lib/mysql
+  scores-db:
+    image: mongo
     ports:
-      - 3050:3306
-      
+      - "27050:27017"
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_INITDB_DATABASE=competitions
+    volumes:
+      - db-scores-data:/data/db
+
 volumes:
-    db-scores-data:
+   db-scores-data:

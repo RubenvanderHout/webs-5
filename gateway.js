@@ -48,13 +48,12 @@ const authMiddleware = async function(req, res, next){
         const response = await axios.put(url, data);
 
         if (response.status === 200) {
-            res.send(true);
+            req.bearer = response.data;
         } else {
-            res.send(false);
+            return res.status(403).send('Authentication failed');
         }
     } catch (error) {
- 
-        res.status(500).send('Could not authenticate jwt');
+        return res.status(500).send('Could not authenticate JWT');
     }
 
     next();
