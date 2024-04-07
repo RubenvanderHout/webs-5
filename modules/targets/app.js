@@ -48,6 +48,7 @@ async function uploadPicture(req, res) {
         const fileInformation = {
             filename: req.body.filename,
             username: req.body.username,
+            email: req.body.email,
             start: req.body.start,
             end: req.body.end,
             competition_id: competitionId

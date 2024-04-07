@@ -5,12 +5,14 @@ import axios from "axios";
 import FormData from "form-data";
 import fs from "fs";
 import amqp from 'amqplib';
+import { MongoClient } from 'mongodb';
 
 
 const port = process.env.PORT;
 const host =  process.env.HOST;
 const apiKey =  process.env.API_KEY;
 const apiSecret = process.env.API_SECRET;
+const mongoUri = process.env.MONGODB_URI;
 
 async function uploadImage(imagePath, apiKey, apiSecret, user) {
     const categorizerEndpoint = 'https://api.imagga.com/v2/categories/general_v3/';
@@ -109,7 +111,7 @@ async function receiveMessageFromQueue() {
         const channel = await connection.createChannel();
         const queueName = 'file_queue';
         await channel.assertQueue(queueName, { durable: false });
-        
+
         console.log(`Waiting for messages in queue '${queueName}'...`);
 
         channel.consume(queueName, async (message) => {
@@ -118,7 +120,7 @@ async function receiveMessageFromQueue() {
                     const content = JSON.parse(message.content.toString());
                     console.log(`Received message from queue '${queueName}':`, content);
                     // Process the message here
-                    
+                    await uploadImageToMongoDB(content);
                     // Acknowledge message
                     channel.ack(message);
                 } catch (error) {
@@ -132,6 +134,23 @@ async function receiveMessageFromQueue() {
     } catch (error) {
         console.error('Error receiving messages from queue:', error);
     }
+}
+
+async function uploadImageToMongoDB(content) {
+    const mongoClient = await connectToMongoDB();
+    const collection = mongoClient.db('targets').collection('competition_files');
+    await collection.insertOne(content);
+
+}
+
+// Function to connect to MongoDB
+async function connectToMongoDB() {
+    const mongoClient = new MongoClient(mongoUri,{auth: {
+        username: 'root',
+        password: 'magicman'
+    }});
+    await mongoClient.connect();
+    return mongoClient;
 }
 
 async function main() {

@@ -1,0 +1,18 @@
+version: '3'
+
+services:
+  db-targets:
+    image: mongo:latest
+    restart: always
+    container_name: db-image
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: magicman
+      MONGO_INITDB_DATABASE: targets
+    volumes:
+      - db-targets-data:/data/db
+    ports:
+      - 27019:27017
+
+volumes:
+  db-targets-data:
