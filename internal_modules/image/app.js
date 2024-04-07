@@ -153,7 +153,7 @@ async function receiveMessageFromQueue() {
                     console.log(`Received message from queue '${timerQueueName}':`, content);
                     await upload();
                     // Process the message here
-                    await compareImages();
+                    await startcomparison();
                     // Acknowledge message
                     channel.ack(message);
                 } catch (error) {
@@ -162,7 +162,7 @@ async function receiveMessageFromQueue() {
                     channel.reject(message, false); // Set requeue to false
                 }
             }
-        }
+        });
 
     } catch (error) {
         console.error('Error receiving messages from queue:', error);
@@ -195,7 +195,7 @@ async function downloadPictureFromAzureStorage(accountName, accountKey, containe
     return fileData;
 }
 
-async function compareImages() {
+async function startcomparison() {
     try {
         // Extract the image path from the request body
         console.log(req.body);
