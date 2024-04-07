@@ -195,26 +195,18 @@ async function main() {
             
             console.log("Deleting previous data...");
             // Perform deletion of previous data
-            try {
             await axios.delete('https://api.imagga.com/v2/similar-images/categories/general_v3/picturemmo', {
                 auth: {
                     username: apiKey,
                     password: apiSecret
                 }
             });
-            } catch (error) {
-                console.error('Error deleting previous data:', error.response.data);
-            }
     
             console.log("Uploading images...");
             console.log(images);
             await Promise.all(images.map(async image  => {
-                try {
                     const imageBuffer = await downloadPictureFromAzureStorage(accountName, accountKey, containerName, image.filename);
                     await uploadImage(imageBuffer, apiKey, apiSecret, image.email); // Upload the image to Imagga
-             } catch (error) {
-                    console.error(`Error downloading or uploading image '${file_path}':`, error);
-                }
             }));
     
             console.log("Images uploaded successfully.");
@@ -243,7 +235,7 @@ async function main() {
         }
     });
     server.post('/comp', async (req, res) => {
-       // try {
+        try {
             // Extract the image path from the request body
             console.log(req.body);
             const competitionId = req.body.competitionId;
@@ -258,10 +250,10 @@ async function main() {
             console.log("Images compared successfully.");
             console.log(comparisonResults);
             res.json(comparisonResults);
-        /*} catch (error) {
+        } catch (error) {
             res.status(500).json({ error: 'Internal Server Error' });
             console.error('Error:', error.response.data);
-        }*/
+        }
     });
     const app = http.createServer(server);
 
