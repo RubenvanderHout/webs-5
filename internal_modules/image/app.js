@@ -4,6 +4,8 @@ import express from "express";
 import axios from "axios";
 import FormData from "form-data";
 import fs from "fs";
+import amqp from 'amqplib';
+
 
 const port = process.env.PORT;
 const host =  process.env.HOST;
@@ -101,11 +103,41 @@ async function compareImages(referenceImagePath, distanceThreshold, apiKey, apiS
     }
 }
 
+async function receiveMessageFromQueue() {
+    try {
+        const connection = await amqp.connect('amqp://localhost');
+        const channel = await connection.createChannel();
+        const queueName = 'file_queue';
+        await channel.assertQueue(queueName, { durable: false });
+        
+        console.log(`Waiting for messages in queue '${queueName}'...`);
+
+        channel.consume(queueName, async (message) => {
+            if (message !== null) {
+                try {
+                    const content = JSON.parse(message.content.toString());
+                    console.log(`Received message from queue '${queueName}':`, content);
+                    // Process the message here
+                    
+                    // Acknowledge message
+                    channel.ack(message);
+                } catch (error) {
+                    console.error('Error processing message:', error);
+                    // Reject message if unable to process
+                    channel.reject(message, false); // Set requeue to false
+                }
+            }
+        });
+
+    } catch (error) {
+        console.error('Error receiving messages from queue:', error);
+    }
+}
+
 async function main() {
     const server = express();
     server.use(express.json());
     server.use(express.urlencoded({ extended: false }));
-
     // List of paths of images to compare
     // Route to handle image comparison
     server.post('/upload', async (req, res) => {
@@ -187,6 +219,8 @@ async function main() {
     app.listen(port, host, () => {
         console.info(`Started server on port ${port}`);
     });
+    receiveMessageFromQueue()
+
 }
 
 main();

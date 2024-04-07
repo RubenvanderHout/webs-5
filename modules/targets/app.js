@@ -20,7 +20,7 @@ async function main() {
     server.use(express.urlencoded({ extended: false }));
 
     // Routes
-    server.post('/upload',upload.single('file'), uploadPicture);
+    server.post('/upload', upload.single('file'), uploadPicture);
     server.get('/target/:competitionId', getFilesByCompetitionId);
     server.get('/target', getAllFiles);
     server.get('/download', downloadPicture);
