@@ -1,12 +1,15 @@
+import "dotenv/config";
 import { MongoClient, Collection, ObjectId } from "mongodb"
+import amqp from "amqplib"
 
-const uri = 'mongodb://admin:password@localhost:27017';
+const uri = process.env.DB_CONNECTION_STRING
 
+const AMQP_HOST = process.env.AMQP_HOST
 let connection
 let channel
 
-const retrieveQueueCompTime = "comptime"
-const sendQueueCompTimeUp = "compdone"
+const receiveQueueCompTime = process.env.QUEUE_RECEIVE_COMPTIME
+const sendQueueCompTimeUp = process.env.QUEUE_SEND_COMPTIMEUP
 
 const client = new MongoClient(uri);
 
@@ -19,13 +22,12 @@ async function main() {
     await connectMongoDB();
 
     await setupAMQP();
-    await fetchTimings();
-    listenForChanges();
     checkEventEndTimes()
 }
 
 async function connectMongoDB() {
     try {
+        console.log('Connecting to MongoDB');
         await client.connect();
         console.log('Connected to MongoDB');
 
@@ -38,16 +40,16 @@ async function connectMongoDB() {
 
 async function setupAMQP(){
     try {
-        connection = await amqp.connect('amqp://localhost')
+        connection = await amqp.connect(AMQP_HOST)
         channel = await connection.createChannel();
 
         console.log("Waiting for messages...")
 
-        channel.assertQueue(receiveConfirmQueue,  {
+        channel.assertQueue(receiveQueueCompTime,  {
             durable: false
         });
 
-        channel.consume(retrieveQueueCompTime, async (msg) => {
+        channel.consume(receiveQueueCompTime, async (msg) => {
             if (msg !== null) {
                 const string = msg.content.toString()
                 const timing = JSON.parse(string);
@@ -59,56 +61,63 @@ async function setupAMQP(){
         })
         
     } catch (error) {
-        console.log("Could not setup AMQP connection")
+        console.log(`Could not setup AMQP connection ${error}`)
+        process.exit(1);
     }
 }
 
-function listenForChanges(collection){
-    const changeStream = collection.watch();
-    
-    changeStream.on('change', async (change) => {
-        if (change.operationType === 'insert') {
-            const newTiming = change.fullDocument;
-            console.log('New timing added:', newTiming);
-            timings.push(newTiming);
-        }
-    });
-}
-
-
 function saveTiming(timing){
     collection.save(timing);
-}
-
-async function fetchTimings(collection){
-    timings = await collection.find().toArray();
 }
 
 async function checkEventEndTimes(){
 
     console.log("Checking timings...");
 
-    let toBeRemoved = [];
+    timings = await collection.find().toArray();
+
+    let sendtimings = [];
 
     // Iterate through timings
     timings.forEach(timing => {
         const currentTime = new Date();
 
         if (currentTime > timing.endTime) {
-            toBeRemoved.push(timing._id); 
+            sendtimings.push(timing); 
         }
     });
 
+    const toBeRemoved = await sendTimings(sendtimings);
     await deleteTimings(toBeRemoved);
 
     // Call this function again until end of time
     setTimeout(checkEventEndTimes, 2000);
 }
 
+async function sendTimings(timings){
+    
+    let toBeRemoved = [];
+    
+    try {
+        channel.assertQueue(sendQueueCompTimeUp,  {
+            durable: false
+        });
+
+        timings.forEach(timing => {
+            channel.sendToQueue(queue, Buffer.from(JSON.stringify(timing)));
+            toBeRemoved.push(timing._id);
+            console.log(" [x] Sent '%s'", timing);
+        });
+    } catch (error) {
+        console.error(error);
+    } finally {
+        return toBeRemoved;
+    }
+}
+
 async function deleteTimings(timings){
     if (timings.length > 0) {
         try {
-            // Delete timings from the database
             await collection.deleteMany({ _id: { $in: timings.map(id => ObjectId(id)) } });
         } catch (err) {
             console.error('Error deleting timings:', err);

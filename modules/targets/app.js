@@ -6,11 +6,13 @@ import amqp from 'amqplib';
 import multer from "multer";
 import { MongoClient } from 'mongodb';
 
-const port = '2000'
+const port = process.env.PORT
 
-const accountName = "webs5";
-const accountKey = "wj/JqeTo1gEHtl3EGY86lCq5DuxkYI2sMrzatYwNZAXpwB474OKw0i1lbyg4v8Eenvp5tT6pejP7+AStxGzp9A==";
-const containerName = "picturemmo";
+const MONGO_URI = process.env.DB_CONNECTION_STRING
+const AMQP_HOST = process.env.AMQP_HOST
+const accountName = process.env.BLOB_ACCOUNT_NAME;
+const accountKey = process.env.BLOB_ACCOUNT_KEY
+const containerName = process.env.BLOB_CONTAINER_NAME
 
 async function main() {
     const server = express();
@@ -103,7 +105,7 @@ async function downloadPicture(req, res) {
 
 // Function to connect to MongoDB
 async function connectToMongoDB() {
-    const mongoClient = new MongoClient("mongodb://root:magicman@localhost:27018/",{auth: {
+    const mongoClient = new MongoClient(MONGO_URI,{auth: {
         username: 'root',
         password: 'magicman'
     }});
@@ -157,7 +159,7 @@ async function streamToBuffer(readableStream) {
 // Function to send message to queue
 async function sendMessageToQueue(message) {
     try {
-        const connection = await amqp.connect('amqp://localhost');
+        const connection = await amqp.connect(AMQP_HOST);
         const channel = await connection.createChannel();
         const queueName = 'file_queue';
         await channel.assertQueue(queueName, { durable: false });

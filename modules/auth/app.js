@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express"
 import jwt from "jsonwebtoken"
 import bcrypt from "bcrypt"
@@ -5,17 +6,17 @@ import mysql from "mysql2/promise"
 import amqp from "amqplib"
 
 const app = express();
+const AMQP_HOST = process.env.AMQP_HOST
+const port = process.env.PORT
+const host = process.env.HOST
 
-const PORT = '5000'
-const HOST = '0.0.0.0'
-
-const JWT_SECRET_KEY = "aghast-feed-crux-footpath-untimed-skincare-thyself-emotion";
+const JWT_SECRET_KEY = process.env.JWT_SECRET_KEY;
 
 let connection;
 let channel;
 
-const receiveQueue = "mailConfirmed"
-const sendQueue = "confirmMail"
+const receiveQueue = process.env.QUEUE_RECEIVE_MAIL
+const sendQueue = process.env.QUEUE_SEND_MAIL
 const RECEIVER_EMAIL = '"Loma Krajcik" <loma.krajcik@ethereal.email>';
 
 app.use(express.json());
@@ -93,8 +94,8 @@ async function main(){
         }
     });
     
-    app.listen(PORT, HOST, () => {
-        console.info(`Started server on port ${PORT}`);
+    app.listen(port, host, () => {
+        console.info(`Started server on port ${port}`);
     });
 }
 
@@ -102,11 +103,11 @@ async function setupDB(){
     
     try {
         const connection = await mysql.createConnection({
-            host: '0.0.0.0',
-            user: 'user',
-            password: 'magicman',
-            database: 'auth',
-            port: '5050'
+            host: process.env.HOST,
+            user: process.env.DB.USER,
+            password: process.env.DB_PASSWORD,
+            database: process.env.DB_DATABASE,
+            port: process.env.DB_PORT
         });
 
         // Create users table if it doesn't exist
@@ -128,7 +129,7 @@ async function setupDB(){
 
 async function setupAMQP(){
     try {
-        connection = await amqp.connect('amqp://localhost')
+        connection = await amqp.connect(AMQP_HOST)
         channel = await connection.createChannel();
 
         console.log("Waiting for messages...")

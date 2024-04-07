@@ -5,10 +5,10 @@ import axios from "axios";
 import FormData from "form-data";
 import fs from "fs";
 
-const port = '3000';
-const host = 'localhost';
-const apiKey = "acc_ea6a5df7c838b88";
-const apiSecret = "d527b45221e212b5e2fa02e4324004e0";
+const port = process.env.PORT;
+const host =  process.env.HOST;
+const apiKey =  process.env.API_KEY;
+const apiSecret = process.env.API_SECRET;
 
 async function uploadImage(imagePath, apiKey, apiSecret, user) {
     const categorizerEndpoint = 'https://api.imagga.com/v2/categories/general_v3/';

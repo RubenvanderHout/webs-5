@@ -1,19 +1,21 @@
+import "dotenv/config";
 import amqp from "amqplib"
 import jwt from "jsonwebtoken"
 import express from "express";
 import nodemailer from "nodemailer"
 
-const port = '7000'
-const host = '0.0.0.0'
+const port = process.env.PORT
+const host = process.env.HOST
+const AMQP_HOST = process.env.AMQP_HOST
 
-const JWT_SECRET = 'secret_key_123';
+const JWT_SECRET = process.env.JWT_SECRET
 
 const transporter = nodemailer.createTransport({
-    host: "smtp.ethereal.email",
-    port: 587,
+    host: process.env.MAIL_HOST,
+    port: process.env.MAIL_PORT,
     auth: {
-      user: "brown.zulauf@ethereal.email",
-      pass: "j6y2vSnQ2kqbDxgkp4",
+      user: process.env.MAIL_USER,
+      pass: process.env.MAIL_PASS,
     },
 });
 
@@ -21,8 +23,8 @@ let connection;
 let channel;
 
 const receiveConfirmQueue = "confirmMail"
-const sendQueue = "mailConfirmed"
 const recieveScoreQueue = "scores"
+const sendQueue = "mailConfirmed"
 
 async function main() {
     const app = express();
@@ -65,7 +67,7 @@ async function main() {
 
 async function setupAMQP(){
     try {
-        connection = await amqp.connect('amqp://localhost')
+        connection = await amqp.connect(AMQP_HOST)
         channel = await connection.createChannel();
 
         console.log("Waiting for messages...")

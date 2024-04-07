@@ -1,22 +1,21 @@
 import express from "express"
-import { CircuitBreaker } from ""
+import { CircuitBreaker } from "opossum"
 
-const port = '1000'
-const host = '0.0.0.0'
+const port = process.env.PORT
+const host = process.env.HOST
 
 const circuitBreaker = new CircuitBreaker({
-    timeout: 3000, // Timeout in milliseconds
-    errorThresholdPercentage: 50, // Error threshold percentage to trip the circuit
-    resetTimeout: 5000, // Time in milliseconds to wait before attempting to close the circuit again
+    timeout: process.env.CIRCUIT_TIMEOUT, // Timeout in milliseconds
+    errorThresholdPercentage: process.env.CIRCUIT_ERROR_THRESHOLD, // Error threshold percentage to trip the circuit
+    resetTimeout: process.env.CIRCUIT_RESET_TIMEOUT, // Time in milliseconds to wait before attempting to close the circuit again
 });
 
 const app = express();
 const proxy = httpProxy.createProxyServer();
 
-const authsUrl = "http://localhost:5000"
-const competitionsUrl = "http://localhost:4000"
-const scoresUrl = "http://localhost:3000"
-const targetsUrl = "http://localhost:2000"
+const authsUrl = process.env.URL_AUTH
+const scoresUrl = process.env.URL_SCORES
+const targetsUrl = process.env.URL_TARGETS
 
 async function doCircuitBreak(url, req, res){
     try {
@@ -65,10 +64,6 @@ app.use(authMiddleware)
 
 app.all("/api/auth/*", async (req, res) => {
     doCircuitBreak(authsUrl + req.url, req, res);
-});
-
-app.all("/api/competitions/*", async (req, res) => {
-    doCircuitBreak(competitionsUrl + req.url, req, res);
 });
 
 app.all("/api/scores/*", async (req, res) => {
