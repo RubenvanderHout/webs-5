@@ -99,7 +99,7 @@ async function insertCompetitionData(competition){
 
     try {
         const competitionsCollection = db.collection('competitions');
-        const entries = jsonData[competitionId];
+        const entries = competition[competitionId];
     
         for (const entry of entries) {
           const { distance, id } = entry;
@@ -116,11 +116,9 @@ async function insertCompetitionData(competition){
             }
           });
         }
-    
-        res.send('Data insertion completed successfully');
+
       } catch (err) {
         console.error('Error inserting data: ' + err);
-        res.status(500).send('Internal Server Error');
       }
 }
 

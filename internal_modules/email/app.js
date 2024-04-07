@@ -159,12 +159,16 @@ function setupHtmlContent(token){
 
 async function sendScoreData(data){
     
-    data.forEach(participant => {
+    const competitionId = Object.keys(data)[1];
+
+    const entries = data[competitionId];
+
+    entries.forEach(participant => {
         transporter.sendMail({
             from: 'Brown Zulauf <brown.zulauf@ethereal.email>',
-            to: participant.email,
+            to: participant.id,
             subject: "Email confirmed", 
-            html: setupHtmlScore(participant.name, participant.score), 
+            html: setupHtmlScore(participant.name, participant.distance), 
         });    
     });
 }
@@ -179,7 +183,7 @@ function setupHtmlScore(username, score){
         </head>
         <body>
             <h2>Confirm Your Email</h2>
-            <p>Hello, ${username} the result is back!!! you have an ${score}</p>
+            <p>Hello, the result is back!!! you have an ${score}</p>
             <button><a href="http://localhost:7000/confirm/${token}">Confirm Email</a></button>
         </body>
         </html>
