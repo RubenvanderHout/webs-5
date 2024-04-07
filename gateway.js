@@ -44,6 +44,7 @@ async function authMiddleware(req, res, next) {
 app.use(authMiddleware)
 
 app.all("/api/auth/*", (req, res, next) => {
+    
     console.log('Forwarding request to:', authsUrl + req.url);
     next();
 }, proxy(authsUrl));

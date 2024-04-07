@@ -43,13 +43,17 @@ async function main(){
             return res.status(400).send('Username not correct');
         }
     
+        if(req.body.email === null || typeof req.body.email !== "string"){
+            return res.status(400).send('Email not correct');
+        }
+
         if(req.body.password === null || typeof req.body.password !== "string"){
             return res.status(400).send('Password not correct');
         }
         
         try {
             const pass = await bcrypt.hash(req.body.password, 10);
-            const user = { username: req.params.username, email: RECEIVER_EMAIL, password: pass, confirmed: 0 };
+            const user = { username: req.params.username, email: req.body.email, password: pass, confirmed: 0 };
             await saveUser(user);
             await sendConfirmUserNameAMQP({ username: user.username, email: user.email });
             res.status(201).send('User registered successfully');
