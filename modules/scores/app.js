@@ -9,6 +9,7 @@ const host = process.env.HOST
 
 const receiveCompetitionDataQueue = process.env.QUEUE_RECEIVE_SCORES;
 const sendEmailRequestQueue = process.env.QUEUE_SEND_EMAIL_REQUEST
+const receiveQueueCompTime = process.env.QUEUE_RECEIVE_COMPTIME
 
 
 const uri = process.env.DB_CONNECTION_STRING
@@ -19,6 +20,8 @@ const AMQP_HOST = process.env.AMQP_HOST;
 
 let db;
 let channel;
+let timings = [];
+let collection;
 
 /** @type mysql.connection */
 let connection = null;
@@ -44,6 +47,10 @@ async function main() {
         }
     })
 
+    app.get("/api/competitions/scores/:competitionId", async (req, res) => {
+        checkEventEndTimes(req.params.competitionId);
+    })
+
     app.listen(port, host, () => {
         console.info(`Started server on port ${port}`);
     });
@@ -55,6 +62,7 @@ async function connectMongoDB() {
         await client.connect();
         console.log('Connected to MongoDB');
         db = client.db('competitions');
+        collection = db.collection('competitionTimings');
     } catch (err) {
         console.error('Error connecting to MongoDB:', err);
     }
@@ -81,7 +89,28 @@ async function setupAMQP(){
             }
         })
 
+        const exchange = 'file_exchange';
+
+        await channel.assertExchange(exchange,"fanout",  { durable: false });
+        console.log("Waiting for messages...")
+
+        channel.assertQueue(receiveQueueCompTime,  {
+            durable: false
+        });
+        await channel.bindQueue(receiveQueueCompTime, exchange, '');
+
+        channel.consume(receiveQueueCompTime, async (msg) => {
+            if (msg !== null) {
+                const string = JSON.parse(msg.content.toString())
+                const timing = string;
+                saveTiming(timing)
+
+                channel.ack(msg);
+            }
+        })
+
         channel.assertQueue()
+        
 
 
         
@@ -121,6 +150,61 @@ async function insertCompetitionData(competition){
       }
 }
 
+async function saveTiming(timing){
+    try{
+        console.log("Saving timing:", timing);
+        await collection.insertOne(timing);
+    } catch (error) {
+        console.error("Error saving timing:", error);
+    }
+}
 
+async function sendTimings(timings){
+    
+    let toBeRemoved = [];
+    
+    try {
+        channel.assertQueue(sendQueueCompTimeUp,  {
+            durable: false
+        });
+
+        timings.forEach(timing => {
+            channel.sendToQueue(sendQueueCompTimeUp, Buffer.from(JSON.stringify(timing)));
+            toBeRemoved.push(timing._id);
+            console.log(" [x] Sent '%s'", timing);
+        });
+    } catch (error) {
+        console.error(error);
+    } finally {
+        return toBeRemoved;
+    }
+}
+
+async function checkEventEndTimes(competition_id){
+    try {
+
+    console.log("Checking timings...");
+
+    timings = await collection.find().toArray();
+
+    let sendtimings = [];
+
+    // Iterate through timings
+    timings.forEach(timing => {
+
+        if (competition_id == timing.competition_id) {
+            sendtimings.push(timing); 
+        }
+    });
+
+    const toBeRemoved = await sendTimings(sendtimings);
+    await deleteTimings(toBeRemoved);
+    
+        }
+    catch (error) {
+        console.error("Error checking timings:", error);
+    }
+
+}
 
 main();
